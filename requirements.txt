@@ -1,6 +1,6 @@
-- Associativity: (1-5)
-- Indices: (2^n | n in {0..4}), Basically just {0-31}
-- Block size: (2^n bytes | n in {2..5}), Basically just {4-31 bytes}
-- Replacement Policy: (LRU and Random)
-- Mem Synch Policy: (Write Back/Write Through)
+Assoc - Associativity: (1-5)
+SetCount - Indices: (2^n | n in {0..4}), Basically just {0-16}
+block_size - Block size: (2^n bytes | n in {2..5}), Basically just {4-32 bytes}
+policy - Replacement Policy: (LRU and Random)
+memory_sync_policy - Mem Synch Policy: (Write Back/Write Through)
 
