@@ -73,9 +73,13 @@ void init_lru(int assoc_index, int block_index)
 unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, unsigned int* compOffset, unsigned int* compBlock, address addr){
   
   // compute index
-  return 1;
-  // compute the offset
+  compIndex = ((addr >> block_size) && (set_count-1)) -1;
+  printf("compindex = %i\n", compIndex);
 
+  // compute the offset
+  compTag = (addr && (block_size-1)) -1;
+
+  printf("compTag = %i\n", compTag);
   // compute the tag
 
   // loop through blocks (if associative) until we find the compBlock
@@ -148,6 +152,7 @@ void accessMemory(address addr, word* data, WriteEnable we)
 
   // If we are reading data
   else{
+    computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr);
     printf("Read not yet enabled\n");
   }
 
