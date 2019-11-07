@@ -66,6 +66,26 @@ void init_lru(int assoc_index, int block_index)
   cache[assoc_index].block[block_index].lru.value = 0;
 }
 
+/* This is the helper function we are using to simplify our accessMemory function
+  it returns true if hit, false if miss, and updates the pointers
+  to the correct values needed for either updating(case of hit), or replacing(case of miss) cache
+*/
+unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, unsigned int* compOffset, unsigned int* compBlock, address addr){
+  
+  // compute index
+  return 1;
+  // compute the offset
+
+  // compute the tag
+
+  // loop through blocks (if associative) until we find the compBlock
+
+  //if hit, return 1
+
+  //if miss, return 0
+  
+}
+
 /*
   This is the primary function you are filling out,
   You are free to add helper functions if you need them
@@ -81,12 +101,57 @@ void init_lru(int assoc_index, int block_index)
 void accessMemory(address addr, word* data, WriteEnable we)
 {
   /* Declare variables here */
+  unsigned int compIndex = 1;
+  unsigned int compTag = 1;
+  unsigned int compOffset = 1;
+  unsigned int compBlock = 1;
 
   /* handle the case of no cache at all - leave this in */
   if(assoc == 0) {
     accessDRAM(addr, (byte*)data, WORD_SIZE, we);
     return;
   }
+
+  // If we are writing data
+  if(we){
+    // if we have a hit
+    if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
+      // update cache
+      cache[compIndex].block[compBlock].data[compOffset] = *data;
+      if(memory_sync_policy == WRITE_THROUGH){
+        // update dram
+        accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+        cache[compIndex].block[compBlock].dirty = VIRGIN;
+      }
+      else{
+        cache[compIndex].block[compBlock].dirty = DIRTY;
+      }
+    }
+    // if we have a miss
+    else{
+      if(memory_sync_policy == WRITE_BACK){
+        // if dirty bit is dirty
+        if(cache[compIndex].block[compBlock].dirty == DIRTY){
+          // update dram
+          accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+        }
+      }
+      // update cache
+      cache[compIndex].block[compBlock].data[compOffset] = *data;
+      cache[compIndex].block[compBlock].dirty = VIRGIN;
+      if(memory_sync_policy == WRITE_THROUGH){
+        //update dram
+        accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+      }
+    }
+  }
+
+  // If we are reading data
+  else{
+    printf("Read not yet enabled\n");
+  }
+
+  // printf("set_count: %i\nassoc: %i\nblock_size: %i\npolicy: %i\nmemory_sync_policy: %i\n", set_count, assoc, block_size, policy, memory_sync_policy);
 
   /*
   You need to read/write between memory (via the accessDRAM() function) and
