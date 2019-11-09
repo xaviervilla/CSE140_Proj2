@@ -66,29 +66,76 @@ void init_lru(int assoc_index, int block_index)
   cache[assoc_index].block[block_index].lru.value = 0;
 }
 
+/* This is a helper function that shifts a number over by the number of bits in a mask */
+unsigned int getShifty(unsigned int bin, unsigned int mask){
+	int i = 0;
+	unsigned int lastBit= 0x1;
+	while ( ((mask&lastBit) == 0) && (i < 32) ){
+		bin = bin >> 1;
+		mask = mask >> 1;
+		i++;
+	}
+	return bin;
+}
+
 /* This is the helper function we are using to simplify our accessMemory function
   it returns true if hit, false if miss, and updates the pointers
   to the correct values needed for either updating(case of hit), or replacing(case of miss) cache
 */
-unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, unsigned int* compOffset, unsigned int* compBlock, address addr){
-  
-  // compute index
-  compIndex = ((addr >> block_size) && (set_count-1)) -1;
-  printf("compindex = %i\n", compIndex);
+unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, unsigned int* compOffset, unsigned int* compBlock, unsigned int addr){
 
   // compute the offset
-  compTag = (addr && (block_size-1)) -1;
+  *compOffset = (addr & (block_size-1));
+  printf("compOffset = %i\n", *compOffset);
+  
+  // compute index
+  *compIndex = ((addr >> (block_size/2)) & (set_count-1));
+  printf("compindex = %i\n", *compIndex);
 
-  printf("compTag = %i\n", compTag);
   // compute the tag
+  unsigned int tagMask = ( 0xffff-((block_size-1) + ((set_count-1)<<(block_size/2)) ) );
+
+  *compTag = getShifty(addr, tagMask);
+  printf("compTag = %i\n", *compTag);
 
   // loop through blocks (if associative) until we find the compBlock
+  for (int i = 0; i < assoc; i++){
+    if (cache[*compIndex].block[i].tag == *compTag){
+      *compBlock = i;
+      return 1;
+    }
+  }
 
-  //if hit, return 1
-
-  //if miss, return 0
-  
+  // We have a miss, we need to select the least recently used shifts {RANDOM, LRU, LFU} 
+  if(policy == RANDOM){ // random
+    *compBlock = (unsigned int)(((unsigned long)(&tagMask))%assoc);
+  }
+  else if(policy == LRU){ // LRU
+    unsigned int lruIndex = 0;
+    unsigned int lruMax = 0;
+    for (int i = 0; i < assoc; i++){
+      if (cache[*compIndex].block[i].lru.value > lruMax){
+        lruMax = cache[*compIndex].block[i].lru.value;
+        lruIndex = i;
+      }
+    }
+    *compBlock = lruIndex;
+  }
+  else{ // LFU
+    printf("LFU not supported\n");
+  }
+  return 0;
 }
+
+void updateLRU(unsigned int compIndex, unsigned int compBlock){
+  for(int j = 0; j < set_count; j++){
+    for (int i = 0; i < assoc; i++){
+      cache[j].block[i].lru.value++;
+    }
+  }
+  cache[compIndex].block[compBlock].lru.value = 0;
+}
+
 
 /*
   This is the primary function you are filling out,
@@ -105,10 +152,10 @@ unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, uns
 void accessMemory(address addr, word* data, WriteEnable we)
 {
   /* Declare variables here */
-  unsigned int compIndex = 1;
-  unsigned int compTag = 1;
-  unsigned int compOffset = 1;
-  unsigned int compBlock = 1;
+  unsigned int compIndex = 0;
+  unsigned int compTag = 0;
+  unsigned int compOffset = 0;
+  unsigned int compBlock = 0;
 
   /* handle the case of no cache at all - leave this in */
   if(assoc == 0) {
@@ -122,6 +169,10 @@ void accessMemory(address addr, word* data, WriteEnable we)
     if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
       // update cache
       cache[compIndex].block[compBlock].data[compOffset] = *data;
+      highlight_offset(compIndex, compBlock, compOffset, HIT);
+      if(policy==LRU){
+        updateLRU(compIndex, compBlock);
+      }
       if(memory_sync_policy == WRITE_THROUGH){
         // update dram
         accessDRAM(addr, (byte*)data, WORD_SIZE, we);
@@ -141,8 +192,13 @@ void accessMemory(address addr, word* data, WriteEnable we)
         }
       }
       // update cache
+      highlight_offset(compIndex, compBlock, compOffset, MISS);
+      highlight_block(compIndex, compBlock);
       cache[compIndex].block[compBlock].data[compOffset] = *data;
       cache[compIndex].block[compBlock].dirty = VIRGIN;
+      if(policy==LRU){
+        updateLRU(compIndex, compBlock);
+      }
       if(memory_sync_policy == WRITE_THROUGH){
         //update dram
         accessDRAM(addr, (byte*)data, WORD_SIZE, we);
@@ -152,8 +208,24 @@ void accessMemory(address addr, word* data, WriteEnable we)
 
   // If we are reading data
   else{
-    computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr);
-    printf("Read not yet enabled\n");
+    // If we have a hit
+    if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
+      highlight_offset(compIndex, compBlock, compOffset, HIT);
+      *data = cache[compIndex].block[compBlock].data[compOffset];
+      if(policy == LRU){
+        updateLRU(compIndex, compBlock);
+      }
+    }
+    // If we have a miss
+    else{
+      highlight_offset(compIndex, compBlock, compOffset, MISS);
+      highlight_block(compIndex, compBlock);
+      accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+      memcpy(cache[compIndex].block[compBlock].data, data, 4*block_size);
+      if(policy == LRU){
+        updateLRU(compIndex, compBlock);
+      }
+    }
   }
 
   // printf("set_count: %i\nassoc: %i\nblock_size: %i\npolicy: %i\nmemory_sync_policy: %i\n", set_count, assoc, block_size, policy, memory_sync_policy);
@@ -193,5 +265,5 @@ void accessMemory(address addr, word* data, WriteEnable we)
      At some point, ONCE YOU HAVE MORE OF YOUR CACHELOGIC IN PLACE,
      THIS LINE SHOULD BE REMOVED.
   */
-  accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+  //accessDRAM(addr, (byte*)data, WORD_SIZE, we);
 }
