@@ -76,9 +76,18 @@ int main(){
 	*/
 
 	
+	/*
 	// Ex 4
 	unsigned int ar[] = { 3, 180, 43, 2, 191, 88, 190, 14, 181, 44, 186, 253 };
 	block_size = 2;
+	set_count = 8;
+	assoc = 1;
+	policy = 1;
+	*/
+
+	// Ex 4
+	unsigned int ar[] = { 3, 180, 43, 2, 191, 88, 190, 14, 181, 44, 186, 253 };
+	block_size = 16;
 	set_count = 8;
 	assoc = 1;
 	policy = 1;

@@ -85,11 +85,12 @@ unsigned int getShifty(unsigned int bin, unsigned int mask){
 unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, unsigned int* compOffset, unsigned int* compBlock, unsigned int addr){
 
   // compute the offset
+  // uint_log2();
   *compOffset = (addr & (block_size-1));
   printf("compOffset = %i\n", *compOffset);
   
-  // compute index
-  *compIndex = ((addr >> (block_size/2)) & (set_count-1));
+  unsigned int offset = uint_log2(block_size);
+  *compIndex = ((addr >> offset) & (set_count-1));
   printf("compindex = %i\n", *compIndex);
 
   // compute the tag
@@ -112,10 +113,10 @@ unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, uns
   }
   else if(policy == LRU){ // LRU
     unsigned int lruIndex = 0;
-    unsigned int lruMax = 0;
+    unsigned int lruMin = assoc-1;
     for (int i = 0; i < assoc; i++){
-      if (cache[*compIndex].block[i].lru.value > lruMax){
-        lruMax = cache[*compIndex].block[i].lru.value;
+      if (cache[*compIndex].block[i].lru.value < lruMin){
+        lruMin = cache[*compIndex].block[i].lru.value;
         lruIndex = i;
       }
     }
@@ -128,14 +129,47 @@ unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, uns
 }
 
 void updateLRU(unsigned int compIndex, unsigned int compBlock){
-  for(int j = 0; j < set_count; j++){
-    for (int i = 0; i < assoc; i++){
-      cache[j].block[i].lru.value++;
+
+
+  int newCache = 1;
+  for (int i = 0; i < assoc; i++){
+    if (cache[compIndex].block[i].lru.value != 0){
+      newCache = 0;
+      break;
     }
   }
-  cache[compIndex].block[compBlock].lru.value = 0;
+  if(newCache==1){
+    for(int i = 0; i < assoc; i++){
+      cache[compIndex].block[i].lru.value = i;
+    }
+  }
+  int cur = cache[compIndex].block[compBlock].lru.value;
+  for(int i = 0; i < assoc; i++){
+    if (cache[compIndex].block[i].lru.value > cur){
+      cache[compIndex].block[i].lru.value--;
+    }
+  }
+  cache[compIndex].block[compBlock].lru.value = assoc-1;
 }
 
+int getEnumVal(){
+  // BYTE_SIZE = 0, HALF_WORD_SIZE, WORD_SIZE, DOUBLEWORD_SIZE, QUADWORD_SIZE, OCTWORD_SIZE
+  switch(block_size){
+    case 1:
+      return 0;
+    case 2:
+      return 1;
+    case 4:
+      return 2;
+    case 8:
+      return 3;
+    case 16:
+      return 4;
+    case 32:
+      return 5;
+  }
+  return -1;
+}
 
 /*
   This is the primary function you are filling out,
@@ -162,11 +196,12 @@ void accessMemory(address addr, word* data, WriteEnable we)
     accessDRAM(addr, (byte*)data, WORD_SIZE, we);
     return;
   }
-
+  __uint8_t transferUnit = getEnumVal();
   // If we are writing data
   if(we){
     // if we have a hit
     if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
+      printf("Index:::::: %u\n", compIndex);
       // update cache
       cache[compIndex].block[compBlock].data[compOffset] = *data;
       highlight_offset(compIndex, compBlock, compOffset, HIT);
@@ -175,7 +210,7 @@ void accessMemory(address addr, word* data, WriteEnable we)
       }
       if(memory_sync_policy == WRITE_THROUGH){
         // update dram
-        accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+      accessDRAM(addr, cache[compIndex].block[compBlock].data, transferUnit, we);
         cache[compIndex].block[compBlock].dirty = VIRGIN;
       }
       else{
@@ -184,11 +219,12 @@ void accessMemory(address addr, word* data, WriteEnable we)
     }
     // if we have a miss
     else{
+      printf("Index:::::: %u\n", compIndex);
       if(memory_sync_policy == WRITE_BACK){
         // if dirty bit is dirty
         if(cache[compIndex].block[compBlock].dirty == DIRTY){
           // update dram
-          accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+      accessDRAM(addr, cache[compIndex].block[compBlock].data, transferUnit, we);
         }
       }
       // update cache
@@ -196,12 +232,13 @@ void accessMemory(address addr, word* data, WriteEnable we)
       highlight_block(compIndex, compBlock);
       cache[compIndex].block[compBlock].data[compOffset] = *data;
       cache[compIndex].block[compBlock].dirty = VIRGIN;
+      cache[compIndex].block[compBlock].tag = compTag;
       if(policy==LRU){
         updateLRU(compIndex, compBlock);
       }
       if(memory_sync_policy == WRITE_THROUGH){
         //update dram
-        accessDRAM(addr, (byte*)data, WORD_SIZE, we);
+      accessDRAM(addr, cache[compIndex].block[compBlock].data, transferUnit, we);
       }
     }
   }
@@ -210,18 +247,22 @@ void accessMemory(address addr, word* data, WriteEnable we)
   else{
     // If we have a hit
     if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
+      printf("Index:::::: %u\n", compIndex);
       highlight_offset(compIndex, compBlock, compOffset, HIT);
-      *data = cache[compIndex].block[compBlock].data[compOffset];
+      memcpy(data, cache[compIndex].block[compBlock].data+compOffset, 4);
       if(policy == LRU){
         updateLRU(compIndex, compBlock);
       }
     }
     // If we have a miss
     else{
+      printf("Index:::::: %u\n", compIndex);
       highlight_offset(compIndex, compBlock, compOffset, MISS);
       highlight_block(compIndex, compBlock);
-      accessDRAM(addr, (byte*)data, WORD_SIZE, we);
-      memcpy(cache[compIndex].block[compBlock].data, data, 4*block_size);
+      // IS CONFUSION
+      accessDRAM(addr, cache[compIndex].block[compBlock].data, transferUnit, we);
+      memcpy(data, cache[compIndex].block[compBlock].data+compOffset, 4);
+      cache[compIndex].block[compBlock].tag = compTag;
       if(policy == LRU){
         updateLRU(compIndex, compBlock);
       }

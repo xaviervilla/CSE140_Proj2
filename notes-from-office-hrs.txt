@@ -1,0 +1,6 @@
+data is 1 word
+if miss accessdram(address data mode we) // now this data is the whole block... cache.block
+source is address, mode is blocksize! 
+
+memcopy to data inside of accessmemory( source=cache.bock.data[compOffset], destination=data, 4)
+
