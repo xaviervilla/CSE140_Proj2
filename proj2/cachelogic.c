@@ -85,19 +85,15 @@ unsigned int getShifty(unsigned int bin, unsigned int mask){
 unsigned int computeLocation(unsigned int* compIndex, unsigned int* compTag, unsigned int* compOffset, unsigned int* compBlock, unsigned int addr){
 
   // compute the offset
-  // uint_log2();
   *compOffset = (addr & (block_size-1));
-  printf("compOffset = %i\n", *compOffset);
   
+  // compute index
   unsigned int offset = uint_log2(block_size);
   *compIndex = ((addr >> offset) & (set_count-1));
-  printf("compindex = %i\n", *compIndex);
 
   // compute the tag
   unsigned int tagMask = ( 0xffff-((block_size-1) + ((set_count-1)<<(block_size/2)) ) );
-
   *compTag = getShifty(addr, tagMask);
-  printf("compTag = %i\n", *compTag);
 
   // loop through blocks (if associative) until we find the compBlock
   for (int i = 0; i < assoc; i++){
@@ -201,7 +197,6 @@ void accessMemory(address addr, word* data, WriteEnable we)
   if(we){
     // if we have a hit
     if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
-      printf("Index:::::: %u\n", compIndex);
       // update cache
       cache[compIndex].block[compBlock].data[compOffset] = *data;
       highlight_offset(compIndex, compBlock, compOffset, HIT);
@@ -219,7 +214,6 @@ void accessMemory(address addr, word* data, WriteEnable we)
     }
     // if we have a miss
     else{
-      printf("Index:::::: %u\n", compIndex);
       if(memory_sync_policy == WRITE_BACK){
         // if dirty bit is dirty
         if(cache[compIndex].block[compBlock].dirty == DIRTY){
@@ -247,7 +241,6 @@ void accessMemory(address addr, word* data, WriteEnable we)
   else{
     // If we have a hit
     if(computeLocation(&compIndex, &compTag, &compOffset, &compBlock, addr)){
-      printf("Index:::::: %u\n", compIndex);
       highlight_offset(compIndex, compBlock, compOffset, HIT);
       memcpy(data, cache[compIndex].block[compBlock].data+compOffset, 4);
       if(policy == LRU){
@@ -256,7 +249,6 @@ void accessMemory(address addr, word* data, WriteEnable we)
     }
     // If we have a miss
     else{
-      printf("Index:::::: %u\n", compIndex);
       highlight_offset(compIndex, compBlock, compOffset, MISS);
       highlight_block(compIndex, compBlock);
       // IS CONFUSION
